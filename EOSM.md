@@ -6,7 +6,8 @@ official Magic Lantern `dev` commit
 **Limited camera testing:** on 2026-10-27, a user confirmed that the module loads
 and generates film JPEGs on an original EOS M after the I/O fix. Reported time
 was about **45 seconds per photo**; the selected output size was not confirmed.
-This is an experimental personal port, with no broad stability validation.
+This report describes the previous 4:4:4 build. The new speed update described
+below still needs camera timing and stability tests.
 
 ## What this port does
 
@@ -29,7 +30,7 @@ skipped. A `.FLM.TMP` file is written first and renamed after success. Failed or
 interrupted jobs retry on a later scan or restart. Removing a film JPEG allows
 that source to be developed again with the currently selected stock.
 
-Half preview is the default; full preview is also available. Sizes come from
+Half preview is the default; full and quarter preview are also available. Sizes come from
 the actual embedded JPEG, not hard-coded 5D dimensions. Processing is entirely in
 software and can be slow; see the limited camera report above. The worker yields
 to Canon and waits during photo capture.
@@ -39,6 +40,30 @@ picked up on subsequent scans; a stock is selected when processing begins.
 This port does not provide live preview filters, MLV/video grading, the optional
 sensor-RAW/spool development path, or a custom playback screen. The generated
 JPEGs are intended for viewing off-camera; Canon playback recognition is untested.
+
+## Speed update
+
+Adapted from GitariDev's EOS 700D port at
+[`b735765`](https://github.com/GitariDev/soup-engine/commit/b735765759fc3dff93fe58d1db277fcac9bc0e35):
+
+- **Quarter preview:** 1296×864 from a 5184×3456 preview. Half remains 2592×1728,
+  and full remains 5184×3456. Older half/full settings retain their meaning.
+- **4:2:0 JPEG encoding:** half as many transform blocks as 4:4:4, with lower
+  chroma resolution. Image dimensions, film stocks and quality setting (88) remain
+  unchanged. The old 4:4:4 API stays available for other engine callers.
+- **256 KiB input window and output staging:** fewer card operations, using
+  separate aligned DMA buffers. Short reads, cancellation and final output flush
+  remain checked. Extra memory is bounded: 512 KiB DMA plus a 256 KiB cached
+  input window; the existing header/work allocations remain.
+- **Look arithmetic:** exact reciprocal multiplication replaces repeated
+  variable division in halation, and grain coordinates avoid per-pixel division.
+- Corrected the encoder's final-byte padding, which could emit unnecessary bytes
+  before the end marker and cause libjpeg warnings.
+
+CR2s are still opened read-only. There is no embedded-preview replacement or RAW
+deletion option. USB debugging is disabled. Existing `.FLM.JPG` files are skipped;
+to time the new build, select **Quarter preview** and take a new photo.
+The 700D author's timings are not an EOS M performance guarantee.
 
 ## Build
 
@@ -78,10 +103,13 @@ With a read-only original EOS M CR2 sample:
 python3 src/ml/eosm/tests/run.py /path/to/sample.CR2
 ```
 
-This checks all 13 stocks at half and full preview against the upstream desktop
+This checks all 13 stocks at quarter, half and full preview against the desktop
 pipeline, under AddressSanitizer and UndefinedBehaviorSanitizer. It also exercises
 short reads, injected I/O failures, cancellation, output collisions, DCIM folder
-changes and preservation of the source. Use `--quick` for one half-size stock.
+changes and preservation of the source. Use `--quick` for one quarter-size stock.
+For independent JPEG validation, compile `src/ml/eosm/tests/encoder.c` against
+libjpeg, run its small/odd-size fixtures, and pass its executable to the adapter
+suite with `--jpeg-check /path/to/encoder-check`; see the tests README.
 
 ## Install on an already working ML card
 

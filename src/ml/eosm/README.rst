@@ -5,11 +5,21 @@ Film JPEGs from the CR2's embedded Canon preview. Original EOS M, firmware
 2.0.2, Magic Lantern module API 8. Experimental port with limited user testing:
 film JPEG generation works after the I/O fix, at about 45 seconds per photo.
 Output size for that timing was not confirmed. Broad stability is unverified.
+The new 4:2:0 / buffered-I/O / quarter-size update still needs camera testing.
+
+Use and output
+--------------
 
 Enable soup.mo, restart, then Shoot > Soup Engine. Select a stock and turn
 Soup Engine on. Existing and new CR2 files in DCIM are processed. Originals
 are kept. Results: IMG_1234.FLM.JPG beside IMG_1234.CR2. Existing results
 are skipped. Stock files live in ML/FILM; restart after changing them.
+Output size offers Half, Full and Quarter preview. Quarter is the fastest;
+on an EOS M full-size preview it produces 1296x864. Existing size settings keep
+their meanings. CR2s stay read-only; USB debugging is disabled.
+
+Camera settings
+---------------
 
 Use RAW or RAW+JPEG, a colour Picture Style and sRGB. No live view effect,
 RAW sensor development or MLV video grading. Camera playback of the new JPEG

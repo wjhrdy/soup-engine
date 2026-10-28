@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "../soup.c"
 #include "jpeg_enc.h"
+#include "jpeg_dec.h"
 
 int ml_shutdown_requested;
 __typeof__(lens_info) lens_info;
@@ -15,8 +16,9 @@ static int movie, halfshutter, handles, dir_handles;
 static int short_reads, read_fail, write_fail, cancel_after, alloc_fail;
 static int read_fail_after, write_fail_after;
 static int open_fail, create_fail, seek_fail;
-static void *dma_base;
+static void *dma_bases[8];
 static size_t allocated, peak;
+static unsigned read_calls, write_calls;
 static const char *card_root;
 static struct card_info card = { "A" };
 struct fio_dirent { DIR *dir; char path[512]; };
@@ -44,15 +46,27 @@ void *fio_malloc(size_t n)
     if (!p) return NULL;
     *p = n; allocated += n;
     if (allocated > peak) peak = allocated;
-    dma_base = p + 1;
-    return dma_base;
+    for (unsigned i = 0; i < 8; i++) if (!dma_bases[i]) {
+        dma_bases[i] = p + 1;
+        return p + 1;
+    }
+    assert(0); return NULL;
 }
 void fio_free(void *p)
 {
     if (p) {
-        if (p == dma_base) dma_base = NULL;
+        int found = 0;
+        for (unsigned i = 0; i < 8; i++) if (p == dma_bases[i]) {
+            dma_bases[i] = NULL; found = 1; break;
+        }
+        assert(found);
         size_t *base = (size_t *)p - 1; allocated -= *base; free(base);
     }
+}
+static int dma_base_valid(const void *p)
+{
+    for (unsigned i = 0; i < 8; i++) if (p == dma_bases[i]) return 1;
+    return 0;
 }
 FILE *FIO_OpenFile(const char *p, unsigned mode)
 {
@@ -75,14 +89,16 @@ FILE *FIO_CreateFile(const char *p)
 }
 int FIO_ReadFile(FILE *f, void *p, size_t n)
 {
-    assert(p == dma_base); /* Partial reads must retain the aligned DMA base. */
+    assert(dma_base_valid(p)); /* Odd short reads must retain the DMA base. */
+    read_calls++;
     if (read_fail || (read_fail_after && !--read_fail_after)) return -1;
     if (short_reads && n > 777) n = 777;
     return (int)fread(p, 1, n, f);
 }
 int FIO_WriteFile(FILE *f, const void *p, size_t n)
 {
-    assert(p == dma_base);
+    assert(dma_base_valid(p));
+    write_calls++;
     if (write_fail || (write_fail_after && !--write_fail_after)) return n ? (int)n - 1 : -1;
     return (int)fwrite(p, 1, n, f);
 }
@@ -98,6 +114,8 @@ int FIO_RemoveFile(const char *p)
 int FIO_RenameFile(const char *a, const char *b)
 {
     char abuf[512], bbuf[512];
+    assert(!cr2_name(strrchr(a, '/') ? strrchr(a, '/') + 1 : a));
+    assert(!cr2_name(strrchr(b, '/') ? strrchr(b, '/') + 1 : b));
     a = map_path(a, abuf); b = map_path(b, bbuf);
     /* Refuse replacement even if the production caller's collision check regresses. */
     struct stat st; assert(stat(b, &st) != 0);
@@ -152,6 +170,7 @@ static void clean_state(void)
     short_reads = read_fail = write_fail = cancel_after = alloc_fail = 0;
     read_fail_after = write_fail_after = 0;
     open_fail = create_fail = seek_fail = 0;
+    read_calls = write_calls = 0;
     soup_enabled = 1;
     assert(!handles && !dir_handles && !allocated);
 }
@@ -205,6 +224,15 @@ int main(int argc, char **argv)
     assert(soup_develop(argv[2], argv[3], &stocks[selected], scale) == SE_OK);
     clean_state();
     char tmp[512]; snprintf(tmp, sizeof tmp, "%s/failure.tmp", card_root);
+    /* Normal reads/writes must be batched rather than one call per 4/8 KB. */
+    assert(soup_develop(argv[2], tmp, &stocks[selected], scale) == SE_OK);
+    uint32_t source_bytes, output_bytes;
+    assert(!FIO_GetFileSize(argv[2], &source_bytes) && !FIO_GetFileSize(tmp, &output_bytes));
+    assert(read_calls <= (source_bytes / (256 * 1024)) + 2);
+    assert(write_calls == (output_bytes + 256 * 1024 - 1) / (256 * 1024));
+    printf("BATCHED stock=%d scale=%d: reads=%u writes=%u bytes=%u\n",
+           selected, scale, read_calls, write_calls, output_bytes);
+    assert(!remove(tmp)); clean_state();
     alloc_fail = 1;
     assert(soup_develop(argv[2], tmp, &stocks[0], 2) == SE_E_NOMEM);
     clean_state();
@@ -225,10 +253,10 @@ int main(int argc, char **argv)
     assert(soup_develop(argv[2], tmp, &stocks[0], 2) != SE_OK);
     assert(!strcmp(soup_error_detail, "I/O: write JPEG"));
     assert(access(tmp, F_OK) != 0); clean_state();
-    read_fail_after = 35;
+    read_fail_after = 2;
     assert(soup_develop(argv[2], tmp, &stocks[0], 2) != SE_OK);
     assert(access(tmp, F_OK) != 0); clean_state();
-    write_fail_after = 5;
+    write_fail_after = 2;
     assert(soup_develop(argv[2], tmp, &stocks[0], 2) != SE_OK);
     assert(access(tmp, F_OK) != 0); clean_state();
     cancel_after = 4;
@@ -242,7 +270,7 @@ int main(int argc, char **argv)
     assert(fread(bytes, 1, 4, f) == 4); fclose(f); assert(!strcmp(bytes, "keep"));
     remove(tmp); clean_state();
     assert(soup_develop("/no-such-cr2", tmp, &stocks[0], 2) != SE_OK);
-    assert(soup_develop(argv[2], tmp, &stocks[0], 4) == SE_E_UNSUPPORTED);
+    assert(soup_develop(argv[2], tmp, &stocks[0], 3) == SE_E_UNSUPPORTED);
     clean_state();
 
     /* Small fixtures exercise the actual directory worker, including a
@@ -252,6 +280,16 @@ int main(int argc, char **argv)
     for (int i = 0; i < 3; i++) {
         snprintf(path, sizeof path, "%s/DCIM/%s.CR2", card_root, names[i]); fixture(path);
     }
+    soup_full = 2;
+    assert(process_file("A:/DCIM/100CANON", "IMG_9999.CR2") == 1);
+    snprintf(path, sizeof path, "%s/DCIM/100CANON/IMG_9999.FLM.JPG", card_root);
+    FILE *quarter = fopen(path, "rb"); assert(quarter);
+    uint8_t quarter_header[2048]; size_t quarter_bytes = fread(quarter_header, 1, sizeof quarter_header, quarter);
+    fclose(quarter);
+    se_jdec_info quarter_info;
+    assert(se_jpeg_dec_info(quarter_header, quarter_bytes, &quarter_info) == SE_OK);
+    assert(quarter_info.width == 20 && quarter_info.height == 12);
+    assert(!remove(path)); soup_full = 0;
     snprintf(path, sizeof path, "%s/DCIM/101CANON/IMG_0002.FLM.JPG", card_root);
     f = fopen(path, "wb"); assert(f); fclose(f);
     lens_info.job_state = halfshutter = 1;

@@ -100,10 +100,13 @@ def main():
     manifest = {
         "camera": "Original Canon EOS M", "firmware": "2.0.2", "module_api": 8,
         "usb_debug": False,
-        "hardware_tested": True,
-        "hardware_validation": {"status": "limited user report", "date": "2026-10-27",
-            "observed": "Module loads and produces film JPEGs after I/O fix",
-            "reported_seconds_per_photo": 45, "output_size_confirmed": False},
+        "hardware_tested": False,
+        "hardware_validation": {"status": "Speed update not yet tested on camera",
+            "previous_build": "4:4:4 build produced JPEGs, user reported about 45 seconds per photo"},
+        "speed_source": {"repository": "https://github.com/GitariDev/soup-engine",
+            "commit": "b735765759fc3dff93fe58d1db277fcac9bc0e35",
+            "changes": ["4:2:0 encoding", "quarter-size decoding", "exact look arithmetic", "256 KiB I/O windows"]},
+        "raw_files_modified": False,
         "magic_lantern_source": ML_URL, "magic_lantern_commit": actual,
         "soup_engine_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "port": "Personal EOS M adapter in src/ml/eosm; generated with OpenAI Codex",
@@ -119,7 +122,7 @@ def main():
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(card.rglob("*")):
             if p.is_file(): z.write(p, p.relative_to(card))
-    print(f"Built {archive}\nLimited camera testing. Read EOSM.md before copying to an EOS M card.")
+    print(f"Built {archive}\nSpeed update not yet tested on camera. Read EOSM.md before copying to an EOS M card.")
 
 
 if __name__ == "__main__":

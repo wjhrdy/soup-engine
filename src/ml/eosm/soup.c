@@ -118,7 +118,8 @@ static int process_file(const char *dir, const char *name)
     if (selected < 0 || selected >= stock_count) selected = 0;
     snprintf(current_file, sizeof current_file, "%s", name);
     progress = 0;
-    se_err rc = soup_develop(cr2, tmp, &stocks[selected], soup_full ? 1 : 2);
+    int scale = soup_full == 1 ? 1 : soup_full == 2 ? 4 : 2;
+    se_err rc = soup_develop(cr2, tmp, &stocks[selected], scale);
     if (rc == SE_OK && !soup_cancelled()) {
         /* Publish only a finished stream, and check for a name collision again. */
         if (FIO_GetFileSize(jpg, &after) == 0 || FIO_RenameFile(tmp, jpg)) {
@@ -216,9 +217,9 @@ static struct menu_entry soup_menu[] = {
         .children = (struct menu_entry[]) {
             { .name = "Film stock", .select = select_stock, .update = show_stock,
               .help = "Film stocks loaded from ML/FILM/INDEX.TXT at startup." },
-            { .name = "Output size", .priv = &soup_full, .max = 1,
-              .choices = CHOICES("Half preview", "Full preview"),
-              .help = "Half is faster. Full uses the embedded JPEG dimensions." },
+            { .name = "Output size", .priv = &soup_full, .max = 2,
+              .choices = CHOICES("Half preview", "Full preview", "Quarter preview"),
+              .help = "Quarter is fastest (~1296x864). Half and full remain available." },
             { .name = "Status", .update = show_status,
               .help = "Failed frames are retried; turn Soup Engine off to cancel." },
             MENU_EOL

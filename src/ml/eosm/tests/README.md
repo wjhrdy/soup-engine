@@ -9,7 +9,7 @@ python3 src/ml/eosm/tests/run.py /absolute/path/to/EOS-M-photo.CR2
 
 The adapter suite compiles the real `soup.c` worker and `develop.c` pipeline
 against mocked Magic Lantern I/O, under AddressSanitizer and UBSan. UBSan errors
-are fatal. It renders every indexed stock at half and full preview size and
+are fatal. It renders every indexed stock at quarter, half and full preview size and
 compares the complete JPEG bytes with the upstream desktop `previewcheck`
 renderer. The CR2 is read-only, with a SHA-256 check before and after.
 
@@ -46,3 +46,29 @@ an original EOS M after the I/O fix, reporting about 45 seconds per photo. Outpu
 size for that timing was not confirmed. Capture coexistence, on-camera playback,
 long-term stability and orderly shutdown still need broader validation.
 See [EOSM.md](../../../../EOSM.md).
+
+## 700D speed update
+
+The speed build passed all 39 adapter/reference comparisons (13 stocks at three
+sizes), under ASan/UBSan, with the sample CR2 hash unchanged. Normal I/O used 11
+reads for the sample and writes in 256 KiB batches. Short reads still use the
+original DMA allocation base. The quarter-size menu setting is checked through
+the directory worker, including output dimensions. Exact reciprocal division is
+exhaustively checked over all 16,711,680 supported numerator/divisor pairs.
+
+For independent JPEG decoding, use libjpeg and pkg-config:
+
+```sh
+cc -std=c99 -O1 -g -DSE_HOSTED -fsanitize=address,undefined \
+  -Isrc/engine $(pkg-config --cflags libjpeg) \
+  src/ml/eosm/tests/encoder.c src/engine/jpeg_enc.c src/engine/se.c \
+  $(pkg-config --libs libjpeg) -o src/ml/eosm/tests/build/encoder-check
+src/ml/eosm/tests/build/encoder-check
+python3 src/ml/eosm/tests/run.py /path/to/EOS-M-photo.CR2 \
+  --jpeg-check src/ml/eosm/tests/build/encoder-check
+```
+
+The independent check decodes twelve flat/colour, small and odd-size fixtures,
+checking sampling, dimensions, flat colours and absence of decoder warnings.
+With `--jpeg-check`, it also decodes every adapter output. This speed build still
+needs physical EOS M timing, memory and shutdown checks.
