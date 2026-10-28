@@ -1,0 +1,12 @@
+*.o
+*.d
+__pycache__/
+/src/filmdev
+/src/out/
+/src/ml/eosm/tests/build/
+/dist-eosm/
+/vendor/
+.DS_Store
+._*
+/dist-eosm-usb-debug/
+/src/tools/out/

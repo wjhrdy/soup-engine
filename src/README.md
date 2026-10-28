@@ -1,5 +1,9 @@
 # Source
 
+For the original EOS M / Canon 2.0.2 port, see [../EOSM.md](../EOSM.md).
+Its native ML module is in `ml/eosm/`; `tools/build-eosm.py` builds and packages
+the pinned official ML core with it. The `payload` target below remains 5D-only.
+
 All of it. The engine, the camera payload, the desktop tools, the
 simulator and the film stocks.
 

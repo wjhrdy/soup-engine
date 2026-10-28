@@ -1,3 +1,8 @@
+> **Original EOS M port:** see [EOSM.md](EOSM.md) for the experimental
+> Magic Lantern module, build, validation and installation instructions.
+> EOS M users must use `dist-eosm/card`; the upstream `card/` binaries below
+> are for the 5D Classic and must not be installed on an EOS M.
+
 <div align="center">
 
 # 🎞️ Soup Engine <sub><sup>beta</sup></sub>
